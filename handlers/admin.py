@@ -128,7 +128,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= E'LONNI TASDIQLASH =================
 async def approve_ad(query, context: ContextTypes.DEFAULT_TYPE, ad_id: int):
     ad = await db.get_ad_with_user(ad_id)
-    username = await db.get_username(ad_id)
+
     if not ad:
         await query.answer("E'lon topilmadi!", show_alert=True)
         return
@@ -139,7 +139,7 @@ async def approve_ad(query, context: ContextTypes.DEFAULT_TYPE, ad_id: int):
         f"⚖️ Miqdor: {ad['amount']}\n"
         f"📍 Manzil: {ad['location']}\n"
         f"📞 Telefon: {ad['phone']}\n"
-        f"👤 Telegram: @{username}\n"
+        f"👤 Telegram: @{ad.get('username') or 'Yo‘q'}\n"
         f"📝 Izoh: {ad.get('description') or 'Yo‘q'}\n\n"
         f"📢 Kanalda e’lon berish quyidagi bot orqali amalga oshiriladi 👉 {BOT_USERNAME}"
     )

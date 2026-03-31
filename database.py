@@ -109,14 +109,14 @@ class Database:
                 row = await cursor.fetchone()
                 return row["id"] if row else None
 
-    async def get_username(self, ad_id: int) -> Optional[str]:
-        await self._ensure_connection()
-        async with self._lock:
-            async with self.conn.execute(
-                    "SELECT username FROM users WHERE telegram_id=?", (ad_id,)
-            ) as cursor:
-                row = await cursor.fetchone()
-                return row[0] if row else None
+    # async def get_username(self, ad_id: int) -> Optional[str]:
+    #     await self._ensure_connection()
+    #     async with self._lock:
+    #         async with self.conn.execute(
+    #                 "SELECT username FROM users WHERE telegram_id=?", (ad_id,)
+    #         ) as cursor:
+    #             row = await cursor.fetchone()
+    #             return row[0] if row else None
 
     # ====================== ADS METHODS ======================
     async def add_pending_ad(
@@ -215,9 +215,9 @@ class Database:
         await self._ensure_connection()
         async with self._lock:
             async with self.conn.execute("""
-                SELECT ads.*, users.telegram_id 
+                SELECT ads.*, users.telegram_id, users.username 
                 FROM ads 
-                LEFT JOIN users ON ads.user_id = users.id 
+                LEFT JOIN users ON ads.user_id = users.id          
                 WHERE ads.id = ?
             """, (ad_id,)) as cursor:
                 row = await cursor.fetchone()

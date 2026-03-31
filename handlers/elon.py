@@ -117,27 +117,39 @@ async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE, next_sta
 # =========================
 async def get_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photos = context.user_data.setdefault('photos', [])
+    # Rasmlar xabarlarining ID-larini saqlash uchun ro'yxat ochamiz
+    photo_msg_ids = context.user_data.setdefault('photo_message_ids', [])
 
     if len(photos) >= 3:
+        # Maksimal miqdorga yetganda, foydalanuvchi yuborgan ortiqcha xabarni ham o'chirish uchun ID-sini saqlaymiz
+        photo_msg_ids.append(update.message.message_id)
+
         await safe_send(context.bot, update.effective_chat.id,
                         "⚠️ Maksimal 3 ta rasm qo‘shishingiz mumkin!",
-                        reply_markup=photo_buttons())
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("✅ Yetarli, davom ettirish", callback_data="finish_photos")],
+                            [InlineKeyboardButton("❎ Bekor qilish", callback_data="cancel")]
+                        ]))
         return PHOTOS
 
     if update.message.photo:
+        # 1. Rasmni o'zini saqlash (bazaga yuborish uchun)
         photo_id = update.message.photo[-1].file_id
         photos.append(photo_id)
 
-    await safe_send(
+        # 2. Rasm kelgan xabar ID-sini saqlash (keyinchalik o'chirish uchun)
+        photo_msg_ids.append(update.message.message_id)
+
+    # Botning "Rasm qo'shildi" degan javob xabarini ham saqlab qo'ysak bo'ladi (uni ham o'chirish uchun)
+    sent_msg = await safe_send(
         context.bot,
         chat_id=update.effective_chat.id,
-        text=f"✅ Rasm qo‘shildi! Jami: {len(photos)} ta",
-        reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Yetarli, davom ettirish", callback_data="finish_photos")],
-        [InlineKeyboardButton("❎ Bekor qilish", callback_data="cancel")]
-    ])
+        text=f"✅ Rasm qo‘shildi! Jami: {len(photos)} ta. Yana rasm yuborishingiz yoki davom etishingiz mumkin.",
+        reply_markup=photo_buttons())
 
-    )
+    if sent_msg:
+        photo_msg_ids.append(sent_msg.message_id)
+
     return PHOTOS
 
 async def photo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -218,11 +230,17 @@ async def edit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_send(context.bot, query.message.chat_id, text, reply_markup=inline_nav())
         return state
 
+
 async def submit_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = context.user_data
+    user_id_tg = query.from_user.id
+
     try:
-        user_id = await db.get_user_id(query.from_user.id)
+        # 1. Rasmlar xabarlarining ID larini olib qo'yamiz (o'chirish uchun)
+        photo_messages = data.get('photo_message_ids', [])
+
+        user_id = await db.get_user_id(user_id_tg)
         await db.add_pending_ad(
             user_id=user_id,
             product=data.get('product'),
@@ -233,13 +251,28 @@ async def submit_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             description=data.get('description', ''),
             photos=data.get('photos', [])
         )
-        if query.message: await query.message.delete()
-        await safe_send(context.bot, query.from_user.id, "✅ E’loningiz muvaffaqiyatli yuborildi!")
+
+        # 2. "Tasdiqlash" tugmasi bor xabarni o'chirish
+        if query.message:
+            await query.message.delete()
+
+        # 3. Foydalanuvchi yuborgan rasmlarni chatdan o'chirish (agar ID larni saqlagan bo'lsangiz)
+        photo_messages = data.get('photo_message_ids', [])
+        for msg_id in photo_messages:
+            try:
+                await context.bot.delete_message(chat_id=query.from_user.id, message_id=msg_id)
+            except Exception as e:
+                logger.error(f"Xabarni o'chirishda xato: {e}")
+
+        await safe_send(context.bot, user_id_tg, "✅ E’loningiz muvaffaqiyatli yuborildi! Admin tekshiruvidan so`ng kanalga chiqariladi.")
+
     except Exception as e:
         logger.error(f"Submit error: {e}")
-        await safe_send(context.bot, query.from_user.id, "⚠️ Xatolik yuz berdi.")
+        await safe_send(context.bot, user_id_tg, "⚠️ Xatolik yuz berdi.")
     finally:
+        # Ma'lumotlarni faqat muvaffaqiyatli yakunlanganda yoki xatodan keyin tozalaymiz
         context.user_data.clear()
+
     return ConversationHandler.END
 
 async def cancel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

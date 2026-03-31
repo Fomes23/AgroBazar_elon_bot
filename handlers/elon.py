@@ -237,9 +237,7 @@ async def submit_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id_tg = query.from_user.id
 
     try:
-        # 1. Rasmlar xabarlarining ID larini olib qo'yamiz (o'chirish uchun)
-        photo_messages = data.get('photo_message_ids', [])
-
+        # Avval e'lonni bazaga saqlaymiz
         user_id = await db.get_user_id(user_id_tg)
         await db.add_pending_ad(
             user_id=user_id,
@@ -252,25 +250,29 @@ async def submit_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
             photos=data.get('photos', [])
         )
 
-        # 2. "Tasdiqlash" tugmasi bor xabarni o'chirish
+        # --- MANA SHU QISMINI TO'G'IRLAYSIZ ---
+        # 1. "Tasdiqlash" tugmasi bor xabarni o'chirish
         if query.message:
-            await query.message.delete()
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
 
-        # 3. Foydalanuvchi yuborgan rasmlarni chatdan o'chirish (agar ID larni saqlagan bo'lsangiz)
+        # 2. Saqlangan barcha rasm va bot xabarlarini o'chirish
         photo_messages = data.get('photo_message_ids', [])
         for msg_id in photo_messages:
             try:
-                await context.bot.delete_message(chat_id=query.from_user.id, message_id=msg_id)
-            except Exception as e:
-                logger.error(f"Xabarni o'chirishda xato: {e}")
+                await context.bot.delete_message(chat_id=user_id_tg, message_id=msg_id)
+            except Exception:
+                pass  # Xabar topilmasa, shunchaki o'tib ketadi
+        # ----------------------------------------
 
-        await safe_send(context.bot, user_id_tg, "✅ E’loningiz muvaffaqiyatli yuborildi! Admin tekshiruvidan so`ng kanalga chiqariladi.")
+        await safe_send(context.bot, user_id_tg, "✅ E’loningiz muvaffaqiyatli yuborildi!")
 
     except Exception as e:
         logger.error(f"Submit error: {e}")
         await safe_send(context.bot, user_id_tg, "⚠️ Xatolik yuz berdi.")
     finally:
-        # Ma'lumotlarni faqat muvaffaqiyatli yakunlanganda yoki xatodan keyin tozalaymiz
         context.user_data.clear()
 
     return ConversationHandler.END
